@@ -1,0 +1,17 @@
+{
+    "name": "stackoverflow-clone",
+    "version": "1.0.0",
+    "private": true,
+    "packageManager": "pnpm@10.17.1",
+    "scripts": {
+      "dev": "concurrently \"pnpm --filter frontend dev\" \"pnpm --filter @backend/source dev\"",
+      "build": "pnpm --filter frontend build && pnpm --filter @backend/source nx build api-gateway",
+      "lint": "pnpm --recursive run lint",
+      "clean": "rimraf node_modules && rimraf **/node_modules && rimraf **/dist && pnpm install"
+    },
+    "devDependencies": {
+      "concurrently": "^9.0.0",
+      "rimraf": "^6.0.1"
+    }
+  }
+  

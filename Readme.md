@@ -1,0 +1,139 @@
+# 🚀 Fullstack Monorepo – Next.js + NestJS (Turbo + Nx)
+
+Dự án fullstack hiện đại gồm:
+- **Frontend:** [Next.js](https://nextjs.org) được quản lý bằng **Turborepo**
+- **Backend:** [NestJS](https://nestjs.com) được quản lý bằng **Nx**
+- Dễ mở rộng, build nhanh, chia sẻ code chung giữa FE & BE
+
+---
+
+## 🏗️ Cấu trúc thư mục
+
+.
+├── apps/
+│ ├── web/ # Frontend - Next.js (Turborepo)
+│ └── api/ # Backend - NestJS (Nx)
+│
+├── packages/ # Thư viện dùng chung
+│ ├── ui/ # Component React tái sử dụng
+│ └── utils/ # Hàm & logic dùng chung
+│
+├── turbo.json # Pipeline của Turborepo
+├── nx.json # Cấu hình Nx cho NestJS
+├── pnpm-workspace.yaml # Định nghĩa workspace cho pnpm
+├── package.json
+└── README.md
+
+yaml
+Copy code
+
+---
+
+## ⚙️ Yêu cầu môi trường
+
+- **Node.js ≥ 18**
+- **pnpm ≥ 8**
+- **Git** để quản lý mã nguồn
+
+Cài `pnpm` nếu chưa có:
+```bash
+npm install -g pnpm
+🚀 Cài đặt & chạy dự án
+1️⃣ Clone repository
+bash
+Copy code
+git clone https://github.com/your-username/your-repo-name.git
+cd your-repo-name
+2️⃣ Cài dependencies
+bash
+Copy code
+pnpm install
+3️⃣ Chạy song song frontend + backend
+bash
+Copy code
+pnpm dev
+Turborepo sẽ chạy cả 2 app cùng lúc:
+
+Frontend (Next.js) → http://localhost:3000
+
+Backend (NestJS) → http://localhost:3001
+
+🧩 File cấu hình chính
+pnpm-workspace.yaml
+yaml
+Copy code
+packages:
+  - "apps/*"
+  - "packages/*"
+turbo.json
+json
+Copy code
+{
+  "$schema": "https://turbo.build/schema.json",
+  "pipeline": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": [".next/**", "dist/**"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {},
+    "test": {}
+  }
+}
+package.json (scripts)
+json
+Copy code
+{
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "lint": "turbo run lint"
+  }
+}
+🧠 Hướng dẫn phát triển
+➕ Thêm app mới
+Frontend khác: pnpm create next-app apps/admin --typescript
+
+Backend khác: pnpm dlx create-nx-workspace@latest apps/another-api --preset=nest
+
+⚡ Chạy riêng từng phần
+bash
+Copy code
+# Chạy riêng FE
+turbo run dev --filter=web
+
+# Chạy riêng BE
+pnpm nx serve api
+📦 Dùng chung code giữa FE & BE
+Tạo file trong packages/utils/:
+
+ts
+Copy code
+export const formatDate = (date: Date) => date.toISOString().split('T')[0];
+Import ở cả FE & BE:
+
+ts
+Copy code
+import { formatDate } from '@repo/utils';
+🧰 Lệnh hữu ích
+Lệnh	Mô tả
+pnpm dev	Chạy cả Next.js & NestJS song song
+turbo run dev --filter=web	Chạy riêng frontend
+pnpm nx serve api	Chạy riêng backend
+pnpm build	Build toàn bộ hệ thống
+pnpm lint	Kiểm tra lint toàn repo
+pnpm test	Chạy test toàn repo
+
+🌍 Deploy gợi ý
+Frontend (Next.js): Vercel / Netlify / Docker
+
+Backend (NestJS): Render / Railway / Docker / AWS ECS
+
+Cache & CI/CD: Turbo Remote Cache + GitHub Actions
+
+📜 Giấy phép
+MIT License © 2025 
+
