@@ -10,19 +10,45 @@ Dự án fullstack hiện đại gồm:
 ## 🏗️ Cấu trúc thư mục
 
 .
-├── apps/
-│ ├── web/ # Frontend - Next.js (Turborepo)
-│ └── api/ # Backend - NestJS (Nx)
-│
-├── packages/ # Thư viện dùng chung
-│ ├── ui/ # Component React tái sử dụng
-│ └── utils/ # Hàm & logic dùng chung
-│
-├── turbo.json # Pipeline của Turborepo
-├── nx.json # Cấu hình Nx cho NestJS
-├── pnpm-workspace.yaml # Định nghĩa workspace cho pnpm
+├── backend
+│   ├── api-gateway
+│   ├── api-gateway-e2e
+│   ├── dist
+│   ├── eslint.config.js
+│   ├── jest.config.ts
+│   ├── jest.preset.js
+│   ├── node_modules
+│   ├── nx.json
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── pnpm-lock.yaml
+│   └── tsconfig.base.json
+├── CONTRIBUTING.md
+├── docs
+│   ├── development-guide.md
+│   ├── overview-guide.md
+│   ├── requestapibackend-guild.md
+│   └── role
+├── frontend
+│   ├── apps
+│   ├── node_modules
+│   ├── package.json
+│   ├── packages
+│   ├── pnpm-lock.yaml
+│   ├── pnpm-workspace.yaml
+│   ├── README.md
+│   └── turbo.json
+├── infra
+│   ├── docker
+│   ├── k8s
+│   └── scripts
+├── node_modules
+│   ├── concurrently -> .pnpm/concurrently@9.2.1/node_modules/concurrently
+│   └── rimraf -> .pnpm/rimraf@6.1.0/node_modules/rimraf
 ├── package.json
-└── README.md
+├── pnpm-lock.yaml
+├── pnpm-workspace.yaml
+└── Readme.md
 
 yaml
 Copy code
