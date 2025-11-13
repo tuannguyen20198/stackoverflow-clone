@@ -1,428 +1,729 @@
-DevOverflow Database Schema - Giải Thích Chi Tiết
-📋 Tổng Quan
-Database này được thiết kế cho một nền tảng Q&A (hỏi đáp) giống Stack Overflow, bao gồm 16 bảng chính với đầy đủ chức năng tương tác xã hội, gamification và quản lý nội dung.
+# DevOverflow - Tài Liệu Database Schema
 
-1️⃣ CORE TABLES (Bảng Cốt Lõi)
-👤 users - Bảng Người Dùng
-Lưu trữ toàn bộ thông tin người dùng.
-Các trường quan trọng:
+> **Phiên bản**: 2.0 (Đã tối ưu hóa)  
+> **Cập nhật lần cuối**: 2024  
+> **Database**: PostgreSQL 14+  
+> **Extensions**: LTREE
 
-id (PK): Mã định danh duy nhất (UUID)
-username: Tên đăng nhập (unique)
-email: Email (unique, để đăng nhập)
-password: Mật khẩu đã mã hóa
-bio: Giới thiệu bản thân
-avatar_url: Link ảnh đại diện
-location: Vị trí địa lý
-portfolio_url: Website cá nhân
-reputation: Điểm danh tiếng (tăng khi nhận upvote, câu trả lời được chấp nhận)
-joined_at: Ngày tham gia
+## 📋 Mục Lục
 
-Indexes:
+1. [Tổng Quan](#tổng-quan)
+2. [Sơ Đồ Database](#sơ-đồ-database)
+3. [Quyết Định Thiết Kế Chính](#quyết-định-thiết-kế-chính)
+4. [Chi Tiết Các Bảng](#chi-tiết-các-bảng)
+5. [Tối Ưu Hóa](#tối-ưu-hóa)
+6. [Mối Quan Hệ](#mối-quan-hệ)
+7. [Các Mẫu Query Phổ Biến](#các-mẫu-query-phổ-biến)
+8. [Chiến Lược Index](#chiến-lược-index)
+9. [Cân Nhắc Khi Scale](#cân-nhắc-khi-scale)
+10. [Hướng Dẫn Migration](#hướng-dẫn-migration)
 
-username, email: Tìm kiếm nhanh
-reputation: Sắp xếp theo ranking
+---
 
-Ví dụ:
-John Doe
-- username: johndoe
-- email: john@example.com
-- reputation: 2,450 điểm
-- joined_at: 2024-01-15
+## 📊 Tổng Quan
 
-❓ questions - Bảng Câu Hỏi
-Lưu tất cả câu hỏi được đăng.
-Các trường quan trọng:
+Database DevOverflow được thiết kế cho nền tảng hỏi đáp (Q&A) tương tự Stack Overflow, bao gồm:
 
-id (PK): Mã câu hỏi
-author_id (FK → users): Người đặt câu hỏi
-title: Tiêu đề câu hỏi (max 255 ký tự)
-content: Nội dung chi tiết (Markdown/HTML)
-views: Số lượt xem
-upvotes: Số vote tích cực
-downvotes: Số vote tiêu cực
-is_answered: Có câu trả lời được chấp nhận chưa?
+- ✅ Câu hỏi, Câu trả lời, và Bình luận lồng nhau (không giới hạn độ sâu)
+- ✅ Hệ thống voting (upvote/downvote)
+- ✅ Điểm danh tiếng và gamification (huy hiệu)
+- ✅ Tính năng xã hội (follow người dùng, follow tags)
+- ✅ Bộ sưu tập và lưu bài viết
+- ✅ Thông báo real-time
+- ✅ Theo dõi hoạt động
 
-Relationships:
+**Tổng số bảng**: 16  
+**Database Engine**: PostgreSQL 14+  
+**Quy mô dự kiến**: Hàng triệu bài viết, hàng nghìn người dùng đồng thời
 
-1 user → nhiều questions (1-to-many)
-1 question → nhiều answers
+---
 
-Ví dụ:
-Question #123:
-- title: "How to implement JWT in React?"
-- author: John Doe
-- views: 1,234
-- upvotes: 45
-- answers: 7
-- is_answered: true
+## 🎨 Sơ Đồ Database
 
-💬 answers - Bảng Câu Trả Lời
-Lưu câu trả lời cho từng câu hỏi.
-Các trường quan trọng:
+File DBML để visualize trên https://dbdiagram.io/d
 
-question_id (FK → questions): Thuộc câu hỏi nào
-author_id (FK → users): Ai trả lời
-content: Nội dung trả lời
-is_accepted: Câu trả lời được chấp nhận (người hỏi chọn)
-upvotes/downvotes: Điểm vote
+```
+Tệp: database/schema.dbml
+Paste vào: https://dbdiagram.io/d để xem diagram
+```
 
-Business Logic:
+**Nhóm bảng chính**:
+- **Core (Cốt lõi)**: users, posts, tags
+- **Social (Xã hội)**: followers, following, tag_follows
+- **Engagement (Tương tác)**: votes, saved_posts, collections
+- **Gamification (Trò chơi hóa)**: badges, user_badges, activities
+- **System (Hệ thống)**: notifications
 
-Mỗi question chỉ có 1 accepted answer
-Khi answer được accept: questions.is_answered = true
-Author của accepted answer nhận +15 reputation
+---
 
-Ví dụ:
-Answer #456 cho Question #123:
-- author: Jane Smith
-- content: "You can use jwt-decode library..."
-- is_accepted: true ✓
-- upvotes: 23
+## 🎯 Quyết Định Thiết Kế Chính
 
-🏷️ tags - Bảng Thẻ Tag
-Phân loại câu hỏi theo chủ đề.
-Các trường quan trọng:
+### 1. **LTREE Cho Bài Viết Lồng Nhau** ⭐
 
-name: Tên tag (unique): "React", "JavaScript"
-description: Mô tả về tag
-question_count: Số câu hỏi có tag này (denormalized)
-follower_count: Số người theo dõi tag
+**Vấn đề**: Cách tiếp cận truyền thống dùng 3 bảng riêng:
+```
+Bảng questions (câu hỏi)
+Bảng answers (câu trả lời)
+Bảng comments (bình luận)
+```
 
-Ví dụ:
-Tag: "React"
-- description: "A JavaScript library for building UIs"
-- question_count: 12,450
-- follower_count: 3,200
+**Hạn chế**:
+- ❌ Không có replies lồng nhau (answer → reply → reply)
+- ❌ Query phức tạp với nhiều JOINs
+- ❌ Khó thêm loại post mới
+- ❌ Khó hiển thị thread có cấu trúc
 
-🔗 question_tags - Bảng Liên Kết (Many-to-Many)
-Kết nối questions và tags.
-Tại sao cần bảng này?
+**Giải pháp**: Dùng 1 bảng `posts` với LTREE (Materialized Path)
 
-1 question có nhiều tags: ["React", "JavaScript", "Authentication"]
-1 tag thuộc nhiều questions
-→ Cần bảng junction table
+```sql
+Bảng posts {
+  post_type: 'question' | 'answer' | 'comment'
+  path: LTREE  -- '001.002.003'
+  parent_id: UUID
+  depth: INTEGER
+}
+```
 
-Unique constraint: (question_id, tag_id) - Không được trùng lặp
-Ví dụ:
-Question #123 có tags:
-- React (tag_id: 1)
-- JavaScript (tag_id: 2)
-- JWT (tag_id: 15)
+**Lợi ích**:
+- ✅ Độ sâu lồng nhau không giới hạn
+- ✅ Query ancestor/descendant cực nhanh
+- ✅ 1 bảng = schema đơn giản hơn
+- ✅ Linh hoạt cho các loại post tương lai
 
-→ 3 records trong question_tags
+**Ví dụ LTREE Path**:
+```
+Câu hỏi (root):
+  path: '001'
+  depth: 0
 
-💭 comments - Bảng Bình Luận
-Bình luận ngắn cho questions hoặc answers.
-Đặc điểm:
+Câu trả lời 1:
+  path: '001.001'
+  depth: 1
+  
+  Reply 1.1:
+    path: '001.001.001'
+    depth: 2
+    
+    Reply 1.1.1:
+      path: '001.001.001.001'
+      depth: 3  ← Không giới hạn!
+      
+Câu trả lời 2:
+  path: '001.002'
+  depth: 1
+```
 
-question_id hoặc answer_id: Chỉ 1 trong 2 có giá trị (nullable)
-content: Nội dung ngắn gọn
-upvotes: Có thể vote comment
+**Queries với LTREE**:
+```sql
+-- Lấy tất cả replies của 1 post
+SELECT * FROM posts WHERE path <@ '001.001';
 
-Ví dụ:
-Comment trên Question #123:
-- author: Alice
-- content: "Have you tried using useContext?"
-- upvotes: 5
+-- Lấy tất cả ancestors của 1 post
+SELECT * FROM posts WHERE path @> '001.001.003';
 
-Comment trên Answer #456:
-- author: Bob
-- content: "This solution worked for me!"
-- upvotes: 2
+-- Lấy các post cùng level (siblings)
+SELECT * FROM posts WHERE nlevel(path) = 2 AND path ~ '001.*{1}';
 
-2️⃣ ENGAGEMENT TABLES (Bảng Tương Tác)
-👍 votes - Bảng Vote
+-- Lấy chỉ direct children
+SELECT * FROM posts WHERE parent_id = 'some-uuid';
+
+-- Đếm tổng số replies trong thread
+SELECT COUNT(*) FROM posts WHERE path <@ '001' AND id != 'question-id';
+
+-- Lấy toàn bộ thread theo thứ tự
+SELECT * FROM posts WHERE path <@ '001' ORDER BY path;
+```
+
+**LTREE Operators**:
+- `<@` : is descendant of (là con cháu của)
+- `@>` : is ancestor of (là tổ tiên của)
+- `~` : matches pattern
+- `nlevel()` : độ sâu của path
+
+**So sánh hiệu năng**:
+
+| Phương pháp | Read Speed | Write Speed | Độ phức tạp | Giới hạn độ sâu |
+|-------------|-----------|-------------|-------------|-----------------|
+| Adjacency List (parent_id) | 🐌 Chậm (Recursive CTE) | ⚡ Nhanh | Đơn giản | Không |
+| Nested Sets | ⚡ Nhanh | 🐌 Chậm (phải rebuild) | Phức tạp | Không |
+| Closure Table | ⚡ Nhanh | Trung bình | Phức tạp | Không |
+| **LTREE** ✅ | ⚡⚡ Rất nhanh | ⚡ Nhanh | Trung bình | ~65K bytes |
+
+---
+
+### 2. **Tách Followers/Following Thành 2 Bảng** ⭐
+
+**Vấn đề**: Thiết kế truyền thống dùng 1 bảng:
+```sql
+Bảng follows {
+  follower_id    -- Người follow
+  following_id   -- Người được follow
+}
+```
+
+**Hạn chế**:
+- ❌ **Lock contention cao** - Cả 2 chiều đều query cùng 1 bảng
+- ❌ **Index conflict** - Cần index theo cả 2 cột
+- ❌ **Hot partition** - User nổi tiếng có nhiều followers gây bottleneck
+- ❌ **Query chậm** - Phải dùng WHERE khác nhau cho mỗi use case
+
+**Use cases thực tế**:
+```sql
+-- Lấy danh sách người follow mình (FOLLOWERS)
+SELECT follower_id FROM follows WHERE following_id = 'my_id';
+
+-- Lấy danh sách người mình follow (FOLLOWING)
+SELECT following_id FROM follows WHERE follower_id = 'my_id';
+```
+
+**Giải pháp**: Tách thành 2 bảng riêng biệt
+
+```sql
+-- Bảng 1: Tối ưu cho "Ai đang follow tôi?"
+Bảng followers {
+  user_id      -- Người ĐƯỢC follow (index chính)
+  follower_id  -- Người follow
+}
+
+-- Bảng 2: Tối ưu cho "Tôi đang follow ai?"
+Bảng following {
+  user_id       -- Người FOLLOW (index chính)
+  following_id  -- Người được follow
+}
+```
+
+**Lợi ích**:
+- ✅ **Giảm lock contention** - 2 bảng riêng = lock riêng
+- ✅ **Query nhanh hơn** - Mỗi bảng có index tối ưu cho 1 chiều
+- ✅ **Scale tốt hơn** - Có thể shard riêng theo user_id
+- ✅ **Dễ cache** - Cache riêng cho followers và following
+
+**So sánh hiệu năng**:
+
+| Aspect | 1 Bảng | 2 Bảng (Tối ưu) |
+|--------|--------|-----------------|
+| Storage | 1x | 2x ⚠️ |
+| Read Speed | 🐌 Chậm hơn | ⚡ Nhanh hơn |
+| Lock Contention | 🔴 Cao | 🟢 Thấp |
+| Write Complexity | Đơn giản | Trung bình (2 INSERTs) |
+| Consistency | Dễ | Cần transaction |
+| Scalability | Hạn chế | 🚀 Tuyệt vời |
+
+**Logic Follow/Unfollow**:
+```javascript
+// User A follow User B
+async function followUser(userA, userB) {
+  await db.transaction(async (tx) => {
+    // INSERT vào 2 bảng cùng lúc
+    await tx.following.create({
+      user_id: userA,
+      following_id: userB
+    });
+    
+    await tx.followers.create({
+      user_id: userB,
+      follower_id: userA
+    });
+    
+    // Update denormalized counts
+    await tx.users.update({
+      where: { id: userA },
+      data: { following_count: { increment: 1 } }
+    });
+    
+    await tx.users.update({
+      where: { id: userB },
+      data: { follower_count: { increment: 1 } }
+    });
+  });
+}
+
+// User A unfollow User B
+async function unfollowUser(userA, userB) {
+  await db.transaction(async (tx) => {
+    // DELETE từ 2 bảng
+    await tx.following.deleteMany({
+      where: { user_id: userA, following_id: userB }
+    });
+    
+    await tx.followers.deleteMany({
+      where: { user_id: userB, follower_id: userA }
+    });
+    
+    // Update counts
+    await tx.users.update({
+      where: { id: userA },
+      data: { following_count: { decrement: 1 } }
+    });
+    
+    await tx.users.update({
+      where: { id: userB },
+      data: { follower_count: { decrement: 1 } }
+    });
+  });
+}
+```
+
+---
+
+## 📋 Chi Tiết Các Bảng
+
+### 1. **users** - Bảng Người Dùng
+
+Lưu trữ thông tin người dùng và metrics.
+
+```sql
+CREATE TABLE users (
+  id UUID PRIMARY KEY,
+  username VARCHAR(50) UNIQUE NOT NULL,
+  email VARCHAR(100) UNIQUE NOT NULL,
+  password VARCHAR(255) NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  bio TEXT,
+  avatar_url VARCHAR(500),
+  location VARCHAR(100),
+  portfolio_url VARCHAR(500),
+  
+  -- Denormalized metrics
+  reputation INTEGER DEFAULT 0,
+  follower_count INTEGER DEFAULT 0,
+  following_count INTEGER DEFAULT 0,
+  
+  joined_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+**Các trường quan trọng**:
+- `reputation`: Điểm danh tiếng, tăng khi nhận upvote, answer được accept
+- `follower_count`: Số người follow (denormalized từ bảng followers)
+- `following_count`: Số người đang follow (denormalized từ bảng following)
+
+**Indexes**:
+```sql
+CREATE INDEX idx_users_username ON users(username);
+CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_reputation ON users(reputation DESC); -- Leaderboard
+CREATE INDEX idx_users_follower_count ON users(follower_count DESC);
+```
+
+**Business Rules**:
+- Username phải unique, 3-50 ký tự
+- Email phải unique và valid format
+- Password phải hash (bcrypt/argon2)
+- Reputation không được âm
+
+---
+
+### 2. **posts** - Bảng Bài Viết (Questions/Answers/Comments)
+
+Bảng unified cho tất cả loại content với LTREE hierarchy.
+
+```sql
+CREATE TABLE posts (
+  id UUID PRIMARY KEY,
+  author_id UUID NOT NULL REFERENCES users(id),
+  
+  -- Content
+  title VARCHAR(255),  -- Chỉ cho questions
+  content TEXT NOT NULL,
+  content_type VARCHAR(20) DEFAULT 'markdown',
+  
+  -- Hierarchy (LTREE)
+  post_type VARCHAR(20) NOT NULL, -- 'question', 'answer', 'comment'
+  path LTREE NOT NULL,
+  parent_id UUID REFERENCES posts(id),
+  question_id UUID REFERENCES posts(id),
+  depth INTEGER DEFAULT 0,
+  
+  -- Metrics (Denormalized)
+  views INTEGER DEFAULT 0,
+  upvotes INTEGER DEFAULT 0,
+  downvotes INTEGER DEFAULT 0,
+  reply_count INTEGER DEFAULT 0,     -- Direct replies
+  total_replies INTEGER DEFAULT 0,   -- All descendants
+  
+  -- Question specific
+  is_answered BOOLEAN DEFAULT FALSE,
+  accepted_answer_id UUID REFERENCES posts(id),
+  
+  -- Answer specific
+  is_accepted BOOLEAN DEFAULT FALSE,
+  
+  -- Metadata
+  is_deleted BOOLEAN DEFAULT FALSE,
+  deleted_at TIMESTAMP,
+  edited_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  
+  CHECK (
+    (post_type = 'question' AND title IS NOT NULL AND parent_id IS NULL) OR
+    (post_type IN ('answer', 'comment') AND parent_id IS NOT NULL)
+  )
+);
+```
+
+**Post Types**:
+- `question`: Câu hỏi (root, depth=0)
+- `answer`: Câu trả lời (depth=1)
+- `comment`: Bình luận/Reply (depth≥2)
+
+**LTREE Path Format**:
+```
+'001'           → Question
+'001.001'       → Answer 1 của question
+'001.001.001'   → Reply 1 của answer 1
+'001.001.001.001' → Reply của reply (nested)
+```
+
+**Indexes**:
+```sql
+-- LTREE indexes (CỰC KỲ QUAN TRỌNG!)
+CREATE INDEX idx_posts_path_gist ON posts USING GIST(path);
+CREATE INDEX idx_posts_path_btree ON posts USING BTREE(path);
+
+-- Regular indexes
+CREATE INDEX idx_posts_author_id ON posts(author_id);
+CREATE INDEX idx_posts_post_type ON posts(post_type);
+CREATE INDEX idx_posts_parent_id ON posts(parent_id);
+CREATE INDEX idx_posts_question_id ON posts(question_id);
+CREATE INDEX idx_posts_created_at ON posts(created_at DESC);
+
+-- Composite indexes
+CREATE INDEX idx_posts_question_answers 
+  ON posts(question_id, post_type, upvotes DESC)
+  WHERE post_type IN ('answer', 'comment');
+```
+
+**Business Rules**:
+- Question phải có title
+- Question không có parent
+- Answer/Comment phải có parent
+- path tự động generate qua trigger
+- Upvote → author +5 reputation (question) hoặc +10 (answer)
+- Accepted answer → author +15 reputation
+
+---
+
+### 3. **tags** - Bảng Tags
+
+Phân loại questions theo chủ đề.
+
+```sql
+CREATE TABLE tags (
+  id UUID PRIMARY KEY,
+  name VARCHAR(50) UNIQUE NOT NULL,
+  description TEXT,
+  question_count INTEGER DEFAULT 0,  -- Denormalized
+  follower_count INTEGER DEFAULT 0,  -- Denormalized
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE post_tags (
+  id UUID PRIMARY KEY,
+  post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  tag_id UUID NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+  created_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(post_id, tag_id)
+);
+```
+
+**Indexes**:
+```sql
+CREATE INDEX idx_tags_name ON tags(name);
+CREATE INDEX idx_tags_question_count ON tags(question_count DESC);
+CREATE INDEX idx_post_tags_post_id ON post_tags(post_id);
+CREATE INDEX idx_post_tags_tag_id ON post_tags(tag_id);
+```
+
+**Ví dụ tags**: `react`, `javascript`, `typescript`, `nextjs`, `database`
+
+---
+
+### 4. **votes** - Bảng Voting
+
 Lưu tất cả upvote/downvote.
-Cấu trúc:
 
-user_id: Ai vote
-question_id/answer_id/comment_id: Vote cái gì (1 trong 3)
-vote_type: "upvote" hoặc "downvote"
+```sql
+CREATE TABLE votes (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  vote_type VARCHAR(10) NOT NULL CHECK (vote_type IN ('upvote', 'downvote')),
+  created_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(user_id, post_id)  -- User chỉ vote 1 lần
+);
+```
 
-Unique Constraints:
+**Indexes**:
+```sql
+CREATE INDEX idx_votes_user_id ON votes(user_id);
+CREATE INDEX idx_votes_post_id ON votes(post_id);
+```
 
-User chỉ vote 1 lần cho mỗi item
-(user_id, question_id) unique
-(user_id, answer_id) unique
+**Reputation Rules**:
+```
+Upvote question   → author +5
+Downvote question → author -2
+Upvote answer     → author +10
+Downvote answer   → author -2
+Accepted answer   → author +15
+```
 
-Business Logic:
-Upvote question → author +5 reputation
-Downvote question → author -2 reputation
-Upvote answer → author +10 reputation
-Accepted answer → author +15 reputation
+---
 
-❤️ follows - Bảng Theo Dõi Users
-User theo dõi user khác.
-Self-referential relationship:
+### 5. **followers** - Bảng Followers (Ai Follow Tôi)
 
-follower_id → người follow
-following_id → người được follow
-Cả 2 đều reference users.id
+Tối ưu cho query "Lấy danh sách followers của tôi".
 
-Ví dụ:
-John follows Jane
-- follower_id: john_id
-- following_id: jane_id
+```sql
+CREATE TABLE followers (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id),      -- Người ĐƯỢC follow
+  follower_id UUID NOT NULL REFERENCES users(id),  -- Người follow
+  created_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(user_id, follower_id),
+  CHECK (user_id != follower_id)
+);
+```
 
-→ John sẽ thấy hoạt động của Jane trong feed
+**Indexes**:
+```sql
+CREATE INDEX idx_followers_user_id ON followers(user_id);      -- PRIMARY
+CREATE INDEX idx_followers_follower_id ON followers(follower_id);
+```
 
-🔖 tag_follows - Theo Dõi Tags
+**Query Example**:
+```sql
+-- Lấy tất cả người follow tôi
+SELECT u.* 
+FROM users u
+JOIN followers f ON f.follower_id = u.id
+WHERE f.user_id = 'my-user-id';
+```
+
+---
+
+### 6. **following** - Bảng Following (Tôi Follow Ai)
+
+Tối ưu cho query "Lấy danh sách người tôi đang follow".
+
+```sql
+CREATE TABLE following (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id),       -- Người FOLLOW
+  following_id UUID NOT NULL REFERENCES users(id),  -- Người được follow
+  created_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(user_id, following_id),
+  CHECK (user_id != following_id)
+);
+```
+
+**Indexes**:
+```sql
+CREATE INDEX idx_following_user_id ON following(user_id);         -- PRIMARY
+CREATE INDEX idx_following_following_id ON following(following_id);
+```
+
+**Query Example**:
+```sql
+-- Lấy tất cả người tôi đang follow
+SELECT u.*
+FROM users u
+JOIN following f ON f.following_id = u.id
+WHERE f.user_id = 'my-user-id';
+```
+
+---
+
+### 7. **tag_follows** - Follow Tags
+
 User theo dõi tags để nhận thông báo.
-Use case:
-Alice follows tag "React"
-→ Có question mới về React
-→ Alice nhận notification
 
-💾 saved_questions - Lưu Câu Hỏi
-User bookmark câu hỏi để đọc sau.
-Khác với collections:
+```sql
+CREATE TABLE tag_follows (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  tag_id UUID NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+  created_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(user_id, tag_id)
+);
+```
 
-saved_questions: Lưu đơn giản
-collections: Tổ chức thành nhóm
+**Use case**: User follow tag "react" → nhận notification khi có question mới về React
 
+---
 
-3️⃣ GAMIFICATION (Trò Chơi Hóa)
-🏅 badges - Bảng Huy Hiệu
-Định nghĩa các loại huy hiệu.
-Loại badges:
+### 8. **saved_posts** - Lưu Bài Viết
 
-Gold 🥇: Khó đạt nhất
-Silver 🥈: Trung bình
-Bronze 🥉: Dễ đạt
+User bookmark posts để đọc sau.
 
-Ví dụ badges:
-Badge: "First Question"
-- type: bronze
-- criteria: "Ask your first question"
+```sql
+CREATE TABLE saved_posts (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  created_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(user_id, post_id)
+);
+```
 
-Badge: "Great Answer"
-- type: gold
-- criteria: "Answer scored 100+ upvotes"
+---
 
-Badge: "Enlightened"
-- type: silver
-- criteria: "First accepted answer with +10 upvotes"
+### 9. **collections** - Bộ Sưu Tập
 
-🎖️ user_badges - Huy Hiệu Của User
-Ghi lại user nào có badge nào.
-Đặc điểm:
+User tổ chức saved posts thành collections.
 
-User có thể có nhiều badge giống nhau
-earned_at: Thời điểm đạt được
+```sql
+CREATE TABLE collections (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name VARCHAR(100) NOT NULL,
+  description TEXT,
+  is_public BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
 
-Ví dụ:
-John's badges:
-- Bronze: "First Question" (2024-01-15)
-- Silver: "Notable Question" (2024-02-20)
-- Gold: "Famous Question" (2024-03-10)
+CREATE TABLE collection_posts (
+  id UUID PRIMARY KEY,
+  collection_id UUID NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+  post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  added_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(collection_id, post_id)
+);
+```
 
-📊 activities - Bảng Hoạt Động
-Lưu lịch sử tất cả hành động.
-Action types:
+**Ví dụ collections**:
+- "React Learning Resources"
+- "Interview Prep Questions"
+- "Algorithm Problems"
 
-asked: Đặt câu hỏi
-answered: Trả lời
-voted: Vote
-commented: Bình luận
-accepted: Answer được accept
+---
 
-Reputation tracking:
+### 10. **badges** - Huy Hiệu
 
-reputation_change: +10, -2, +15...
-Dùng để tính tổng reputation và hiển thị timeline
+Định nghĩa các loại badges.
 
-Ví dụ:
-Activity log của John:
-1. Asked question #123 → +5 rep
-2. Received upvote → +10 rep
-3. Answer accepted → +15 rep
-Total: +30 reputation today
+```sql
+CREATE TABLE badges (
+  id UUID PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  description TEXT,
+  badge_type VARCHAR(20) NOT NULL CHECK (badge_type IN ('gold', 'silver', 'bronze')),
+  icon_url VARCHAR(500),
+  criteria TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
 
-4️⃣ ORGANIZATION (Tổ Chức)
-📚 collections - Bộ Sưu Tập
-User tạo folder để nhóm questions.
-Use case:
-Collection: "React Learning"
-- Questions về Hooks
-- Questions về Context
-- Questions về Performance
+CREATE TABLE user_badges (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  badge_id UUID NOT NULL REFERENCES badges(id) ON DELETE CASCADE,
+  earned_at TIMESTAMP DEFAULT NOW()
+);
+```
 
-Collection: "Interview Prep"
-- Algorithm questions
-- System design questions
-Đặc điểm:
+**Ví dụ badges**:
+- 🥉 **"First Question"** (Bronze): Đặt câu hỏi đầu tiên
+- 🥈 **"Notable Question"** (Silver): Câu hỏi đạt 2,500 views
+- 🥇 **"Great Answer"** (Gold): Câu trả lời có 100+ upvotes
 
-is_public: Chia sẻ collection với người khác
-Private: Chỉ mình user thấy
+---
 
+### 11. **activities** - Theo Dõi Hoạt Động
 
-🗂️ collection_questions - Junction Table
-Kết nối collections với questions (many-to-many).
+Lưu lịch sử tất cả hoạt động của user.
 
-5️⃣ SYSTEM TABLES
-🔔 notifications - Bảng Thông Báo
-Thông báo cho user về các hoạt động liên quan.
-Notification types:
+```sql
+CREATE TABLE activities (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  action_type VARCHAR(50) NOT NULL, -- 'asked', 'answered', 'voted', 'followed', etc
+  post_id UUID REFERENCES posts(id),
+  reputation_change INTEGER DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+```
 
-answer: Có người trả lời question của bạn
-comment: Có người comment
-vote: Nhận upvote
-badge: Đạt được badge mới
-follow: Có người follow bạn
-mention: Được @ mention
+**Indexes**:
+```sql
+CREATE INDEX idx_activities_user_id ON activities(user_id);
+CREATE INDEX idx_activities_created_at ON activities(created_at DESC);
+CREATE INDEX idx_activities_user_created ON activities(user_id, created_at DESC);
+```
 
-Các trường liên quan:
+**Use cases**:
+- Timeline hoạt động của user
+- Tính tổng reputation
+- Hiển thị "Recent Activity"
 
-related_question_id: Link đến question
-related_answer_id: Link đến answer
-related_user_id: User gây ra notification
-is_read: Đã đọc chưa
+---
 
-Ví dụ:
-Notification:
-"Jane Smith answered your question 'How to implement JWT?'"
-- type: answer
-- related_question_id: 123
-- related_answer_id: 456
-- related_user_id: jane_id
-- is_read: false
+### 12. **notifications** - Thông Báo
 
-🔗 KEY RELATIONSHIPS (Mối Quan Hệ Chính)
-1. User-Centric (Tập trung vào User)
-users (1) → (many) questions
-users (1) → (many) answers
-users (1) → (many) comments
-users (1) → (many) votes
-users (1) → (many) notifications
-users (1) → (many) activities
-2. Question-Centric (Tập trung vào Question)
-questions (1) → (many) answers
-questions (1) → (many) comments
-questions (1) → (many) votes
-questions (many) ↔ (many) tags [through question_tags]
-3. Many-to-Many Relationships
-users ↔ users [through follows]
-users ↔ tags [through tag_follows]
-users ↔ questions [through saved_questions]
-users ↔ badges [through user_badges]
-collections ↔ questions [through collection_questions]
+```sql
+CREATE TABLE notifications (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type VARCHAR(50) NOT NULL, -- 'answer', 'comment', 'vote', 'badge', 'follow'
+  content TEXT NOT NULL,
+  related_post_id UUID REFERENCES posts(id),
+  related_user_id UUID REFERENCES users(id),
+  is_read BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+```
 
-📈 DENORMALIZATION (Tối Ưu Hóa)
-Một số trường được denormalize để tăng performance:
-1. questions.views
+**Indexes**:
+```sql
+CREATE INDEX idx_notifications_user_id ON notifications(user_id);
+CREATE INDEX idx_notifications_is_read ON notifications(user_id, is_read);
+CREATE INDEX idx_notifications_user_created 
+  ON notifications(user_id, is_read, created_at DESC);
+```
 
-Không cần join với bảng views riêng
-Tăng trực tiếp mỗi lần xem
+**Notification Types**:
+- `answer`: Có người trả lời câu hỏi của bạn
+- `comment`: Có người comment
+- `vote`: Nhận upvote
+- `badge`: Đạt được badge mới
+- `follow`: Có người follow bạn
+- `mention`: Được @ mention
 
-2. questions.upvotes/downvotes
+---
 
-Không cần COUNT(*) từ bảng votes
-Update khi có vote mới
+## 🔗 Mối Quan Hệ
 
-3. tags.question_count
+### User-Centric Relationships
+```
+users (1) ──→ (many) posts (author)
+users (1) ──→ (many) votes
+users (1) ──→ (many) followers (được follow)
+users (1) ──→ (many) following (follow người khác)
+users (1) ──→ (many) saved_posts
+users (1) ──→ (many) collections
+users (1) ──→ (many) activities
+users (1) ──→ (many) notifications
+users (many) ←→ (many) badges (qua user_badges)
+users (many) ←→ (many) tags (qua tag_follows)
+```
 
-Không cần COUNT(*) từ question_tags
-Update khi thêm/xóa tag
+### Post-Centric Relationships
+```
+posts (1) ──→ (many) posts (parent-child qua LTREE)
+posts (1) ──→ (many) votes
+posts (many) ←→ (many) tags (qua post_tags)
+posts (1) ──→ (many) saved_posts
+posts (1) ──→ (many) notifications
+```
 
-4. users.reputation
-
-Tổng hợp từ activities
-Update real-time
-
-Trade-off:
-
-✅ Read nhanh hơn (không cần JOIN nhiều)
-❌ Write phức tạp hơn (phải update nhiều chỗ)
-
-
-🎯 USE CASES (Các Tình Huống Sử Dụng)
-Use Case 1: User Đặt Câu Hỏi
-sql1. INSERT vào questions
-2. INSERT vào question_tags (cho mỗi tag)
-3. UPDATE tags.question_count (+1)
-4. INSERT vào activities (action_type = 'asked')
-5. Gửi notifications cho followers của tags
-Use Case 2: User Upvote Câu Hỏi
-sql1. INSERT vào votes (vote_type = 'upvote')
-2. UPDATE questions.upvotes (+1)
-3. UPDATE users.reputation (+5 cho author)
-4. INSERT vào activities
-5. INSERT vào notifications (cho author)
-Use Case 3: Accept Answer
-sql1. UPDATE answers.is_accepted = true
-2. UPDATE questions.is_answered = true
-3. UPDATE users.reputation (+15 cho answerer)
-4. INSERT vào activities
-5. INSERT vào notifications
-6. Check và award badges nếu đủ điều kiện
-Use Case 4: Hiển Thị Question Detail
-sql1. SELECT question JOIN users (author)
-2. SELECT answers JOIN users (answerers)
-3. SELECT tags FROM question_tags
-4. SELECT comments
-5. SELECT user's vote status
-6. UPDATE questions.views (+1)
-
-🔒 DATA INTEGRITY (Toàn Vẹn Dữ Liệu)
-Foreign Key Constraints
-Tất cả FK đều có ON DELETE rules:
-sqlquestions.author_id → users.id
-  ON DELETE CASCADE (xóa user → xóa questions)
-
-answers.question_id → questions.id
-  ON DELETE CASCADE (xóa question → xóa answers)
-
-votes.user_id → users.id
-  ON DELETE CASCADE (xóa user → xóa votes)
-Unique Constraints
-sql- users.username UNIQUE
-- users.email UNIQUE
-- tags.name UNIQUE
-- (user_id, question_id) UNIQUE trong votes
-- (user_id, question_id) UNIQUE trong saved_questions
-Check Constraints
-sql- vote_type IN ('upvote', 'downvote')
-- badge_type IN ('gold', 'silver', 'bronze')
-- reputation >= 0
-
-🚀 SCALING CONSIDERATIONS (Mở Rộng)
-Indexes Strategy
-sql1. Primary Keys: Tự động indexed
-2. Foreign Keys: Indexed cho JOINs nhanh
-3. Composite indexes:
-   - (user_id, created_at) trong activities
-   - (question_id, is_accepted) trong answers
-4. Text search: Full-text index trên questions.title, content
-Partitioning (Phân vùng)
-sql- activities: Partition by created_at (monthly)
-- notifications: Partition by created_at (weekly)
-- votes: Partition by created_at (yearly)
-Caching Strategy
-sql- Cache: Top questions (views, upvotes)
-- Cache: User profile (reputation, badges)
-- Cache: Tag list với question_count
-- Redis: Real-time notification count
-
-📝 SUMMARY (Tóm Tắt)
-16 Tables tổng quan:
-Core (5): users, questions, answers, tags, question_tags
-Engagement (4): votes, follows, tag_follows, saved_questions
-Gamification (3): badges, user_badges, activities
-Organization (2): collections, collection_questions
-System (2): notifications, comments
-Key Features:
-
-✅ Q&A platform đầy đủ
-✅ Reputation system
-✅ Badge/Achievement system
-✅ Social features (follow, vote, save)
-✅ Notification system
-✅ Collections để organize
-✅ Scalable design
-
-Performance Optimizations:
-
-Denormalized counts
-Strategic indexes
-Efficient JOINs
+### Many-to-Many Relationships
+```
+users ←→ users (qua followers & following)
+users ←→ tags (qua tag_follows)
+users ←→ badges (qua user_badges)
+posts ←→ tags (qua post_tags)
+collections ←→ posts (qua collection_posts)
+```
