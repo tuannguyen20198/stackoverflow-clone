@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "nx serve api-gateway",
     "build": "nx build api-gateway",
-    "start": "node dist/apps/api-gateway/main.js"
+    "start": "node dist/apps/api-gateway/main.js",
+    "codegen": "openapi-generator-cli generate",
+    "post-codegen": "pnpm lint && echo \"✅ ESLint ran successfully!\""
   },
   "private": true,
   "dependencies": {
@@ -30,6 +32,7 @@
     "@nx/web": "19.8.4",
     "@nx/webpack": "19.8.4",
     "@nx/workspace": "22.0.2",
+    "@openapitools/openapi-generator-cli": "^2.25.0",
     "@swc-node/register": "~1.9.1",
     "@swc/core": "~1.5.7",
     "@swc/helpers": "~0.5.11",

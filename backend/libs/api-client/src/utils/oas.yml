@@ -1,0 +1,335 @@
+openapi: 3.0.3
+info:
+  title: SSOService API
+  version: 1.0.0
+  description: API for retrieving user information from SSOService
+
+paths:
+  /api/auth/login:
+    post:
+      tags:
+        - Auth
+      operationId: login
+      summary: User login
+      description: Authenticate user with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Unauthorized - Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/verify-token:
+    post:
+      tags:
+        - Auth
+      operationId: verifyToken
+      summary: Verify JWT token
+      description: Verify the provided JWT and return the decoded payload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyTokenRequest'
+      responses:
+        '200':
+          description: Token is valid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifyTokenResponse'
+        '401':
+          description: Unauthorized - Invalid token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '400':
+          description: Bad request - Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  
+  /api/users:
+    post:
+      tags:
+        - User
+      operationId: createUser
+      summary: Create a new user
+      description: Creates a new user with the provided information
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Bad request - Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/users/me:
+    get:
+      tags:
+        - User
+      operationId: getMe
+      summary: Get current logged-in user
+      description: Return the user information based on the provided JWT
+      security:
+        - bearerAuth: []    # 👈 Bắt buộc Bearer token
+      responses:
+        '200':
+          description: Current user information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          description: Unauthorized - Missing or invalid token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/users/{id}:
+    get:
+      tags:
+        - User
+      operationId: getUserById
+      summary: Get user by ID
+      description: Retrieve user information by user ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: User ID
+          schema:
+            type: integer
+            example: 1
+      responses:
+        '200':
+          description: User information retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  securitySchemes:         # 👈 Thêm phần này
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: 'example@gmail.com'
+        password:
+          type: string
+          description: User's password
+          example: 'abc123'
+          minLength: 6
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT authentication token
+          example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+
+    VerifyTokenRequest:
+      type: object
+      required:
+        - token
+      properties:
+        token:
+          type: string
+          description: JWT token to verify
+          example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+
+    VerifyTokenResponse:
+      type: object
+      description: Decoded JWT payload
+      properties:
+        sub:
+          type: integer
+          example: 1
+        email:
+          type: string
+          format: email
+          example: 'example@gmail.com'
+        iat:
+          type: integer
+          description: Issued at (seconds)
+          example: 1737760000
+        exp:
+          type: integer
+          description: Expiration (seconds)
+          example: 1737763600
+
+    CreateUserRequest:
+      type: object
+      required:
+        - email
+        - firstName
+        - lastName
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: 'example@gmail.com'
+        firstName:
+          type: string
+          description: User's first name
+          example: 'John'
+        lastName:
+          type: string
+          description: User's last name
+          example: 'Doe'
+        password:
+          type: string
+          description: User's password
+          example: 'abc123'
+          minLength: 6
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Unique identifier for the user
+          example: 4
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: 'example@gmail.com'
+        password:
+          type: string
+          description: User's password
+          example: 'abc123'
+        firstName:
+          type: string
+          description: User's first name
+          example: 'John'
+        lastName:
+          type: string
+          description: User's last name
+          example: 'Doe'
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the user was created
+          example: '2025-09-14T08:34:55.639Z'
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the user was last updated
+          example: '2025-09-14T08:34:55.639Z'
+
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Unique identifier for the user
+          example: 4
+        email:
+          type: string
+          format: email
+          description: User's email address
+          example: 'example@gmail.com'
+        firstName:
+          type: string
+          description: User's first name
+          example: 'John'
+        lastName:
+          type: string
+          description: User's last name
+          example: 'Doe'
+        role:
+          type: string
+          description: User's role
+          example: 'candidate'
+        createdAt:
+          type: string
+          format: date-time
+          description: Timestamp when the user was created
+          example: '2025-09-14T08:34:55.639Z'
+        updatedAt:
+          type: string
+          format: date-time
+          description: Timestamp when the user was last updated
+          example: '2025-09-14T08:34:55.639Z'
+          
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+          description: Error message
+          example: 'Invalid input data'
+        statusCode:
+          type: integer
+          description: HTTP status code
+          example: 400

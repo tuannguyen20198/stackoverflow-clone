@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json.schemastore.org/nest-cli",
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "api-gateway/src",
+  "compilerOptions": {
+    "deleteOutDir": true,
+    "webpack": true,
+    "tsConfigPath": "api-gateway/tsconfig.app.json"
+  },
+  "nx": true,
+  "root": "api-gateway",
+  "projects": {
+    "@tuan/api-client": {
+      "type": "library",
+      "root": "libs/api-client",
+      "entryFile": "index",
+      "sourceRoot": "libs/api-client/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/api-client/tsconfig.lib.json"
+      }
+    }
+  }
+}
