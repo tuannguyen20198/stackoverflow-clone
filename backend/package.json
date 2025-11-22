@@ -6,8 +6,9 @@
     "dev": "nx serve api-gateway",
     "build": "nx build api-gateway",
     "start": "node dist/apps/api-gateway/main.js",
-    "codegen": "openapi-generator-cli generate",
-    "post-codegen": "pnpm lint && echo \"✅ ESLint ran successfully!\""
+    "generate": "echo \"No generator configured\"",
+    "lint": "nx lint api-gateway",
+    "codegen": "openapi-generator-cli generate && pnpm lint && pnpm build && echo \"✅ ESLint ran successfully!\""
   },
   "private": true,
   "dependencies": {
